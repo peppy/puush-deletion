@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "puush-deletion", "puush-deletion\puush-deletion.csproj", "{F3B95541-541D-4E69-A711-6252611C262B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F3B95541-541D-4E69-A711-6252611C262B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3B95541-541D-4E69-A711-6252611C262B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3B95541-541D-4E69-A711-6252611C262B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3B95541-541D-4E69-A711-6252611C262B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
