@@ -99,16 +99,5 @@ namespace puush_deletion
                 }
             }
         }
-
-        internal static DataSet RunDataset(string sqlString, params MySqlParameter[] parameters)
-        {
-            if (!HasDatabase) return null;
-
-            using (MySqlConnection m = GetConnection())
-            {
-                m.Open();
-                return MySqlHelper.ExecuteDataset(m, sqlString, parameters);
-            }
-        }
     }
 }
