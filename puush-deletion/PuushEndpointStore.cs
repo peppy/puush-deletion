@@ -21,6 +21,8 @@ namespace puush_deletion
             if (endpoint != null)
                 client = new AmazonS3Client(new BasicAWSCredentials(key, secret), new AmazonS3Config
                 {
+                    CacheHttpClient = true,
+                    HttpClientCacheSize = 32,
                     ServiceURL = endpoint,
                     UseHttp = true,
                     ForcePathStyle = true
@@ -51,6 +53,8 @@ namespace puush_deletion
             lock (FileLock)
                 File.AppendAllText($"deleted-{pool}.txt", $"batch: {string.Join(" ", keys)}\n");
 
+            //return Task.WhenAll(keys.Select(k => client.DeleteObjectAsync(bucket, k)).ToArray());
+            
             return client.DeleteObjectsAsync(new DeleteObjectsRequest
             {
                 BucketName = bucket,

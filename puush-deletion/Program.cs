@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -25,9 +26,16 @@ namespace puush_deletion
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
                 .Build();
 
-
+            ServicePointManager.DefaultConnectionLimit = 128;
+            
+            ThreadPool.GetMinThreads(out _, out int completion);
+            ThreadPool.SetMinThreads(256, completion);
+            
             Database.ConnectionString = config["database"];
             Database.ConnectionStringSlave = config["database_slave"];
+            
+            var partitionSize = int.Parse(config["partition_size"]);
+            var workerCount = int.Parse(config["worker_count"]);
 
             var endpoints = new Dictionary<int, PuushEndpointStore>();
 
@@ -47,11 +55,11 @@ namespace puush_deletion
             results = Database.RunQuerySlave(
                 "SELECT `upload`.`upload_id`, `upload`.`user_id`, `upload`.`filestore`, `upload`.`filesize`, `upload`.`pool_id`, `upload`.`path` FROM `upload_stats` FORCE INDEX (delete_lookup) INNER JOIN `upload` ON `upload`.`upload_id` = `upload_stats`.`upload_id` WHERE (`upload_stats`.`last_access` < DATE_ADD(NOW(), INTERVAL -90 DAY))");
 
-            var options = new ParallelOptions { MaxDegreeOfParallelism = 4 };
+            var options = new ParallelOptions { MaxDegreeOfParallelism = workerCount };
 
             StartConsoleLogging();
 
-            Parallel.ForEach(results.Cast<IDataRecord>().Partition(5), options, records =>
+            Parallel.ForEach(results.Cast<IDataRecord>().Partition(partitionSize), options, records =>
             {
                 try
                 {
