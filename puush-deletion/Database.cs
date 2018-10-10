@@ -50,7 +50,7 @@ namespace puush_deletion
             if (parameters != null)
                 c.Parameters.AddRange(parameters);
             c.CommandText = sqlString;
-            c.CommandTimeout = 36000;
+            c.CommandTimeout = 60000;
             return c.ExecuteReader(CommandBehavior.CloseConnection);
         }
 
@@ -94,7 +94,6 @@ namespace puush_deletion
                 {
                     c.Parameters.AddRange(parameters);
                     c.CommandText = sqlString;
-                    c.CommandTimeout = 5;
                     return c.ExecuteNonQuery();
                 }
             }
