@@ -17,30 +17,49 @@ namespace puush_deletion
         private static int errors;
         private static int running;
         private static long freedBytes;
-        private static int proFilesSkipped;
+        private static int skippedEndpoint;
+        private static int skippedPro;
         private static int chunksProcessed;
 
-        static void Main()
+        static void Main(string[] args)
         {
             var config = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
                 .Build();
 
             ServicePointManager.DefaultConnectionLimit = 128;
-            
+
             ThreadPool.GetMinThreads(out _, out int completion);
             ThreadPool.SetMinThreads(256, completion);
-            
+
             Database.ConnectionString = config["database"];
             Database.ConnectionStringSlave = config["database_slave"];
-            
-            var partitionSize = int.Parse(config["partition_size"]);
+
+            var partitionSize = args.Length > 1 ? int.Parse(args[1]) : int.Parse(config["partition_size"]);
             var workerCount = int.Parse(config["worker_count"]);
 
             var endpoints = new Dictionary<int, PuushEndpointStore>();
+            var specificEndpoints = new List<int>();
+
+            if (args.Length > 0)
+                specificEndpoints.Add(int.Parse(args[0]));
+            else
+            {
+                foreach (var v in config.GetSection("run_endpoints").GetChildren())
+                    specificEndpoints.Add(int.Parse(v.Value));
+            }
 
             foreach (var section in config.GetSection("endpoints").GetChildren())
-                endpoints.Add(int.Parse(section["Pool"]), new PuushEndpointStore(int.Parse(section["Pool"]), section["Key"], section["Secret"], section["Bucket"], section["Endpoint"]));
+            {
+                int poolId = int.Parse(section["Pool"]);
+
+                if (specificEndpoints.Count == 0 || specificEndpoints.Contains(poolId))
+                    endpoints.Add(int.Parse(section["Pool"]), new PuushEndpointStore(poolId, section["Key"], section["Secret"], section["Bucket"], section["Endpoint"]));
+            }
+
+            if (specificEndpoints.Count == 0)
+                foreach (var e in endpoints)
+                    specificEndpoints.Add(e.Key);
 
             var proUsers = new List<int>();
 
@@ -50,6 +69,11 @@ namespace puush_deletion
                 proUsers.Add(results.GetInt32("user_id"));
 
             Console.WriteLine($" {proUsers.Count} users found!");
+
+            Console.WriteLine();
+            Console.WriteLine("Running for endpoints: " + string.Join(", ", specificEndpoints));
+            Console.WriteLine("Parition size:         " + partitionSize);
+            Console.WriteLine("Workers:               " + workerCount);
 
             Console.WriteLine("Fetching deletable items...");
             results = Database.RunQuerySlave(
@@ -67,7 +91,9 @@ namespace puush_deletion
 
                     var chunk = records.Select(r => new PuushUpload(r)).ToList();
 
-                    Interlocked.Add(ref proFilesSkipped, chunk.RemoveAll(i => proUsers.Contains(i.UserId)));
+                    Interlocked.Add(ref skippedPro, chunk.RemoveAll(i => proUsers.Contains(i.UserId)));
+
+                    Interlocked.Add(ref skippedEndpoint, chunk.RemoveAll(i => !specificEndpoints.Contains(i.Filestore)));
 
                     List<PuushUpload> toDelete = new List<PuushUpload>(chunk);
                     foreach (var i in chunk)
@@ -128,7 +154,7 @@ namespace puush_deletion
                 while (true)
                 {
                     Thread.Sleep(1000);
-                    Console.WriteLine($"running {running} completed {chunksProcessed:n0} deleted {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freedBytes / 1024 / 1024 / 1024:n0}GB skipped {proFilesSkipped:n0}");
+                    Console.WriteLine($"running {running} completed {chunksProcessed:n0} deleted {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freedBytes / 1024 / 1024 / 1024:n0}GB pro {skippedPro:n0} skip {skippedEndpoint:n0}");
                 }
             }) { IsBackground = true };
             logger.Start();
