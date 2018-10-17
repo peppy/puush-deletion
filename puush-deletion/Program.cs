@@ -85,6 +85,8 @@ namespace puush_deletion
 
             StartConsoleLogging();
 
+            var existingCounts = new Dictionary<string, int>();
+
             Parallel.ForEach(results.Cast<IDataRecord>().Partition(partitionSize), options, records =>
             {
                 try
@@ -97,49 +99,72 @@ namespace puush_deletion
 
                     Interlocked.Add(ref skippedEndpoint, chunk.RemoveAll(i => !specificEndpoints.Contains(i.Filestore)));
 
-                    List<PuushUpload> toDelete = new List<PuushUpload>(chunk);
-                    foreach (var i in chunk)
-                    {
-                        var stillExists = Database.RunQueryOne("SELECT upload_id FROM `upload` WHERE `upload`.`upload_id` != @id AND `upload`.`path` = @path AND `upload`.`filestore` = @filestore LIMIT 1",
-                                              new MySqlParameter("id", i.UploadId),
-                                              new MySqlParameter("path", i.Path),
-                                              new MySqlParameter("filestore", i.Filestore)) != null;
+                    List<PuushUpload> toDeleteFromStores = new List<PuushUpload>(chunk);
 
-                        if (stillExists)
+                    // we can't delete items from stores which have a null path
+                    toDeleteFromStores.RemoveAll(i => string.IsNullOrEmpty(i.Path));
+
+                    for (var index = 0; index < toDeleteFromStores.Count; index++)
+                    {
+                        var i = toDeleteFromStores[index];
+                        var key = $"{i.Filestore}/{i.Path}";
+
+                        lock (existingCounts)
                         {
-                            Console.WriteLine($"Other instance found for {i.UploadId}; skipping delete.");
-                            Interlocked.Increment(ref existing);
-                            toDelete.Remove(i);
+                            bool didExist;
+                            if (!(didExist = existingCounts.TryGetValue(key, out int count)))
+                            {
+                                count = (int)(long)Database.RunQueryOne("SELECT COUNT(*) FROM `upload` WHERE `upload`.`path` = @path AND `upload`.`filestore` = @filestore",
+                                    new MySqlParameter("id", i.UploadId),
+                                    new MySqlParameter("path", i.Path),
+                                    new MySqlParameter("filestore", i.Filestore));
+                            }
+
+                            if (--count > 0)
+                            {
+                                existingCounts[key] = count;
+                                Console.WriteLine($"Found {count} remaining instances for {key}; skipping delete.");
+                                Interlocked.Increment(ref existing);
+                                toDeleteFromStores.Remove(i);
+                                index--;
+                            }
+                            else if (didExist)
+                            {
+                                Console.WriteLine($"All remaining instances for {key} are purged; performing delete.");
+                                existingCounts.Remove(key);
+                            }
                         }
                     }
 
-                    if (toDelete.Count > 0)
+                    if (toDeleteFromStores.Count > 0)
                     {
                         try
                         {
                             Task.WaitAll(
-                                toDelete.GroupBy(i => i.Filestore)
+                                toDeleteFromStores.GroupBy(i => i.Filestore)
                                     .Select(e => endpoints[e.Key].Delete(e.Select(i => $"files/{i.Path}"))).ToArray()
                             );
                         }
                         catch (Exception e)
                         {
+                            Console.WriteLine("Error on chunk: " + string.Join(",", chunk.Select(c => c.UploadId)));
                             Console.WriteLine(e.ToString());
                             Interlocked.Increment(ref errors);
                             return;
                         }
 
-                        Interlocked.Add(ref deletions, toDelete.Count);
-                        Interlocked.Add(ref freedBytes, toDelete.Sum(i => i.Filesize));
+                        Interlocked.Add(ref freedBytes, toDeleteFromStores.Sum(i => i.Filesize));
                     }
 
-                    foreach (var item in toDelete)
+                    foreach (var item in chunk)
                     {
                         Database.RunNonQuery($"DELETE FROM `upload` WHERE `upload_id` = {item.UploadId}");
                         Database.RunNonQuery($"DELETE FROM `upload_stats` WHERE `upload_id` = {item.UploadId}");
                         Database.RunNonQuery($"UPDATE `user` SET `disk_usage` = GREATEST(0, cast(`disk_usage` as signed) - {item.Filesize}) WHERE `user_id` = {item.UserId}");
                         Database.RunNonQuery($"UPDATE `pool` SET `count` = GREATEST(0, `count` - 1) WHERE `pool_id` = {item.Pool}");
                     }
+
+                    Interlocked.Add(ref deletions, chunk.Count);
                 }
                 finally
                 {
@@ -156,7 +181,7 @@ namespace puush_deletion
                 while (true)
                 {
                     Thread.Sleep(1000);
-                    Console.WriteLine($"running {running} completed {chunksProcessed:n0} deleted {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freedBytes / 1024 / 1024 / 1024:n0}GB pro {skippedPro:n0} skip {skippedEndpoint:n0}");
+                    Console.WriteLine($"active {running} chunks {chunksProcessed:n0} delrows {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freedBytes / 1024f / 1024 / 1024:n1}GB pro {skippedPro:n0} skip {skippedEndpoint:n0}");
                 }
             }) { IsBackground = true };
             logger.Start();
