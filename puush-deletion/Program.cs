@@ -70,14 +70,16 @@ namespace puush_deletion
 
             Console.WriteLine($" {proUsers.Count} users found!");
 
+            var endpointsString = string.Join(", ", specificEndpoints);
+
             Console.WriteLine();
-            Console.WriteLine("Running for endpoints: " + string.Join(", ", specificEndpoints));
+            Console.WriteLine("Running for endpoints: " + endpointsString);
             Console.WriteLine("Parition size:         " + partitionSize);
             Console.WriteLine("Workers:               " + workerCount);
 
             Console.WriteLine("Fetching deletable items...");
             results = Database.RunQuerySlave(
-                "SELECT `upload`.`upload_id`, `upload`.`user_id`, `upload`.`filestore`, `upload`.`filesize`, `upload`.`pool_id`, `upload`.`path` FROM `upload_stats` FORCE INDEX (delete_lookup) INNER JOIN `upload` ON `upload`.`upload_id` = `upload_stats`.`upload_id` WHERE (`upload_stats`.`last_access` < DATE_ADD(NOW(), INTERVAL -90 DAY))");
+                $"SELECT `upload`.`upload_id`, `upload`.`user_id`, `upload`.`filestore`, `upload`.`filesize`, `upload`.`pool_id`, `upload`.`path` FROM `upload_stats` FORCE INDEX (delete_lookup) INNER JOIN `upload` ON `upload`.`upload_id` = `upload_stats`.`upload_id` WHERE `upload_stats`.`last_access` < DATE_ADD(NOW(), INTERVAL -90 DAY) AND `filestore` in ({endpointsString})");
 
             var options = new ParallelOptions { MaxDegreeOfParallelism = workerCount };
 
