@@ -53,13 +53,17 @@ namespace puush_deletion
             lock (FileLock)
                 File.AppendAllText($"deleted-{pool}.txt", $"batch: {string.Join(" ", keys)}\n");
 
-            //return Task.WhenAll(keys.Select(k => client.DeleteObjectAsync(bucket, k)).ToArray());
-            
-            return client.DeleteObjectsAsync(new DeleteObjectsRequest
+            switch (keys.Count())
             {
-                BucketName = bucket,
-                Objects = keys.Select(k => new KeyVersion { Key = k }).ToList()
-            });
+                case 1:
+                    return Delete(keys.First());
+                default:
+                    return client.DeleteObjectsAsync(new DeleteObjectsRequest
+                    {
+                        BucketName = bucket,
+                        Objects = keys.Select(k => new KeyVersion { Key = k }).ToList()
+                    });
+            }
         }
     }
 }
