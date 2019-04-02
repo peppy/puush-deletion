@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -7,11 +7,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="AWSSDK.S3" Version="3.3.24.1" />
-      <PackageReference Include="DogStatsD-CSharp-Client" Version="3.1.0" />
-      <PackageReference Include="Microsoft.Extensions.Configuration" Version="2.1.1" />
-      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="2.1.1" />
-      <PackageReference Include="MySqlConnector" Version="0.45.1" />
+      <PackageReference Include="AWSSDK.S3" Version="3.3.101.1" />
+      <PackageReference Include="DogStatsD-CSharp-Client" Version="3.2.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration" Version="2.2.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="2.2.0" />
+      <PackageReference Include="MySqlConnector" Version="0.51.1" />
     </ItemGroup>
 
 </Project>
