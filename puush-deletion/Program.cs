@@ -54,7 +54,7 @@ namespace puush_deletion
                 int poolId = int.Parse(section["Pool"]);
 
                 if (specificEndpoints.Count == 0 || specificEndpoints.Contains(poolId))
-                    endpoints.Add(int.Parse(section["Pool"]), new PuushEndpointStore(poolId, section["Key"], section["Secret"], section["Bucket"], section["Endpoint"]));
+                    endpoints.Add(int.Parse(section["Pool"]), new PuushEndpointStore(poolId, section["Key"], section["Secret"], section["Bucket"], section["Endpoint"], bool.Parse(section["RequiresDeletion"])));
             }
 
             if (specificEndpoints.Count == 0)

@@ -15,8 +15,9 @@ namespace puush_deletion
         private readonly AmazonS3Client client;
         private readonly int pool;
         private readonly string bucket;
+        private readonly bool requiresDeletion;
 
-        public PuushEndpointStore(int pool, string key, string secret, string bucket, string endpoint = null)
+        public PuushEndpointStore(int pool, string key, string secret, string bucket, string endpoint = null, bool requiresDeletion = true)
         {
             if (endpoint != null)
                 client = new AmazonS3Client(new BasicAWSCredentials(key, secret), new AmazonS3Config
@@ -32,6 +33,7 @@ namespace puush_deletion
 
             this.pool = pool;
             this.bucket = bucket;
+            this.requiresDeletion = requiresDeletion;
 
             Console.Write($"Checking connection to endpoint {pool} ({endpoint ?? "s3"}/{bucket})..");
             client.ListObjectsAsync(bucket, "test_lookup").Wait();
@@ -45,6 +47,8 @@ namespace puush_deletion
             lock (file_lock)
                 File.AppendAllText($"deleted-{pool}.txt", $"single: {key}\n");
 
+            if (!requiresDeletion) return Task.CompletedTask;
+            
             return client.DeleteObjectAsync(bucket, key);
         }
 
@@ -53,6 +57,8 @@ namespace puush_deletion
             lock (file_lock)
                 File.AppendAllText($"deleted-{pool}.txt", $"batch: {string.Join(" ", keys)}\n");
 
+            if (!requiresDeletion) return Task.CompletedTask;
+            
             switch (keys.Count())
             {
                 case 1:
