@@ -6,31 +6,31 @@ namespace puush_deletion
 {
     internal static class Database
     {
-        private static string connectionString;
+        private static string connection_string;
 
         public static string ConnectionString
         {
-            get { return connectionString; }
+            get { return connection_string; }
             set
             {
-                if (connectionString == value) return;
+                if (connection_string == value) return;
 
-                connectionString = value;
+                connection_string = value;
                 HasDatabase = !string.IsNullOrEmpty(value);
                 MySqlConnection.ClearAllPools();
             }
         }
 
-        private static string connectionStringSlave;
+        private static string connection_string_slave;
 
         public static string ConnectionStringSlave
         {
-            get { return connectionStringSlave; }
+            get { return connection_string_slave; }
             set
             {
-                if (connectionStringSlave == value) return;
+                if (connection_string_slave == value) return;
 
-                connectionStringSlave = value;
+                connection_string_slave = value;
                 MySqlConnection.ClearAllPools();
             }
         }

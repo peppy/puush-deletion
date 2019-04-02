@@ -16,10 +16,10 @@ namespace puush_deletion
         private static int deletions;
         private static int errors;
         private static int running;
-        private static long freedBytes;
-        private static int skippedEndpoint;
-        private static int skippedPro;
-        private static int chunksProcessed;
+        private static long freed_bytes;
+        private static int skipped_endpoint;
+        private static int skipped_pro;
+        private static int chunks_processed;
 
         static void Main(string[] args)
         {
@@ -95,9 +95,9 @@ namespace puush_deletion
 
                     var chunk = records.Select(r => new PuushUpload(r)).ToList();
 
-                    Interlocked.Add(ref skippedPro, chunk.RemoveAll(i => proUsers.Contains(i.UserId)));
+                    Interlocked.Add(ref skipped_pro, chunk.RemoveAll(i => proUsers.Contains(i.UserId)));
 
-                    Interlocked.Add(ref skippedEndpoint, chunk.RemoveAll(i => !specificEndpoints.Contains(i.Filestore)));
+                    Interlocked.Add(ref skipped_endpoint, chunk.RemoveAll(i => !specificEndpoints.Contains(i.Filestore)));
 
                     List<PuushUpload> toDeleteFromStores = new List<PuushUpload>(chunk);
 
@@ -153,7 +153,7 @@ namespace puush_deletion
                             return;
                         }
 
-                        Interlocked.Add(ref freedBytes, toDeleteFromStores.Sum(i => i.Filesize));
+                        Interlocked.Add(ref freed_bytes, toDeleteFromStores.Sum(i => i.Filesize));
                     }
 
                     foreach (var item in chunk)
@@ -168,7 +168,7 @@ namespace puush_deletion
                 }
                 finally
                 {
-                    Interlocked.Increment(ref chunksProcessed);
+                    Interlocked.Increment(ref chunks_processed);
                     Interlocked.Decrement(ref running);
                 }
             });
@@ -181,8 +181,10 @@ namespace puush_deletion
                 while (true)
                 {
                     Thread.Sleep(1000);
-                    Console.WriteLine($"active {running} chunks {chunksProcessed:n0} delrows {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freedBytes / 1024f / 1024 / 1024:n1}GB pro {skippedPro:n0} skip {skippedEndpoint:n0}");
+                    Console.WriteLine($"active {running} chunks {chunks_processed:n0} delrows {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freed_bytes / 1024f / 1024 / 1024:n1}GB pro {skipped_pro:n0} skip {skipped_endpoint:n0}");
                 }
+
+                // ReSharper disable once FunctionNeverReturns
             }) { IsBackground = true };
             logger.Start();
         }

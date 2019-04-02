@@ -38,11 +38,11 @@ namespace puush_deletion
             Console.WriteLine("OK!");
         }
 
-        private static readonly object FileLock = new object();
+        private static readonly object file_lock = new object();
 
         public Task Delete(string key)
         {
-            lock (FileLock)
+            lock (file_lock)
                 File.AppendAllText($"deleted-{pool}.txt", $"single: {key}\n");
 
             return client.DeleteObjectAsync(bucket, key);
@@ -50,7 +50,7 @@ namespace puush_deletion
 
         public Task Delete(IEnumerable<string> keys)
         {
-            lock (FileLock)
+            lock (file_lock)
                 File.AppendAllText($"deleted-{pool}.txt", $"batch: {string.Join(" ", keys)}\n");
 
             switch (keys.Count())
