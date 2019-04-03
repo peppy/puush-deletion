@@ -11,6 +11,11 @@ namespace puush_deletion
         public readonly int Pool;
         public readonly string Path;
 
+        public PuushUpload(string path)
+        {
+            Path = path;
+        }
+        
         public PuushUpload(IDataRecord dataRecord)
         {
             UploadId = (long)(ulong)dataRecord.GetValue(0);
@@ -20,5 +25,7 @@ namespace puush_deletion
             Pool = dataRecord.GetInt32(4);
             Path = dataRecord.GetString(5);
         }
+
+        public string FullPath => $"files/{Path}";
     }
 }
