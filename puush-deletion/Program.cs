@@ -21,13 +21,24 @@ namespace puush_deletion
         private static int skipped_pro;
         private static int chunks_processed;
 
+        private static Dictionary<int, PuushEndpointStore> endpoints;
+
+        private static IConfigurationRoot config;
+
         static void Main(string[] args)
         {
-            var config = new ConfigurationBuilder()
+            if (args.Length == 0)
+            {
+                Console.WriteLine("First argument must be a valid mode [deletion / migration]");
+                return;
+            }
+
+            config = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
                 .Build();
 
             ServicePointManager.DefaultConnectionLimit = 128;
+            ServicePointManager.SetTcpKeepAlive(true, 30, 30);
 
             ThreadPool.GetMinThreads(out _, out int completion);
             ThreadPool.SetMinThreads(256, completion);
@@ -35,31 +46,81 @@ namespace puush_deletion
             Database.ConnectionString = config["database"];
             Database.ConnectionStringSlave = config["database_slave"];
 
-            var partitionSize = args.Length > 1 ? int.Parse(args[1]) : int.Parse(config["partition_size"]);
-            var workerCount = int.Parse(config["worker_count"]);
+            endpoints = new Dictionary<int, PuushEndpointStore>();
 
-            var endpoints = new Dictionary<int, PuushEndpointStore>();
+            foreach (var section in config.GetSection("endpoints").GetChildren())
+            {
+                int poolId = int.Parse(section["Pool"]);
+                endpoints.Add(poolId, new PuushEndpointStore(poolId, section["Key"], section["Secret"], section["Bucket"], section["Endpoint"], bool.Parse(section["RequiresDeletion"])));
+            }
+
+            var subArgs = args.Skip(1).ToArray();
+            switch (args[0])
+            {
+                case "deletion":
+                    runDeletion(subArgs);
+                    break;
+                case "migration":
+                    runMigration(subArgs);
+                    break;
+            }
+        }
+
+        private static void runMigration(string[] args)
+        {
+            int sourceId, destinationId;
+
+            if (args.Length > 1)
+            {
+                sourceId = int.Parse(args[0]);
+                destinationId = int.Parse(args[1]);
+            }
+            else
+            {
+                Console.WriteLine("Please specify a source and destination endpoint");
+                return;
+            }
+
+
+            var source = endpoints[sourceId];
+            var destination = endpoints[destinationId];
+
+            Console.WriteLine();
+            Console.WriteLine("Migrating from:        " + source);
+            Console.WriteLine("Migrating to:          " + destination);
+            Console.WriteLine();
+
+            Console.WriteLine("Fetching migratable items...");
+
+            var results = Database.RunQuerySlave($"SELECT DISTINCT(path) FROM `upload_stats` INNER JOIN `upload` ON `upload`.`upload_id` = `upload_stats`.`upload_id` WHERE `filestore` = {source.Pool}");
+
+            parallelResults(results, records =>
+            {
+                foreach (IDataRecord r in records)
+                {
+                    var upload = new PuushUpload(r.GetString(0));
+
+                    Console.WriteLine($"Migrating {upload.Path}...");
+
+                    using (var stream = source.Get(upload.FullPath).Result)
+                        destination.Put(upload.FullPath, stream).Wait();
+
+                    Database.RunNonQuery($"UPDATE upload SET filestore = {destinationId} WHERE filestore = {sourceId} AND path = '{upload.Path}'");
+                }
+            });
+        }
+
+        private static void runDeletion(string[] args)
+        {
             var specificEndpoints = new List<int>();
 
             if (args.Length > 0)
                 specificEndpoints.Add(int.Parse(args[0]));
             else
             {
-                foreach (var v in config.GetSection("run_endpoints").GetChildren())
-                    specificEndpoints.Add(int.Parse(v.Value));
+                Console.WriteLine("Please specify an endpoint");
+                return;
             }
-
-            foreach (var section in config.GetSection("endpoints").GetChildren())
-            {
-                int poolId = int.Parse(section["Pool"]);
-
-                if (specificEndpoints.Count == 0 || specificEndpoints.Contains(poolId))
-                    endpoints.Add(int.Parse(section["Pool"]), new PuushEndpointStore(poolId, section["Key"], section["Secret"], section["Bucket"], section["Endpoint"], bool.Parse(section["RequiresDeletion"])));
-            }
-
-            if (specificEndpoints.Count == 0)
-                foreach (var e in endpoints)
-                    specificEndpoints.Add(e.Key);
 
             var proUsers = new List<int>();
 
@@ -74,20 +135,16 @@ namespace puush_deletion
 
             Console.WriteLine();
             Console.WriteLine("Running for endpoints: " + endpointsString);
-            Console.WriteLine("Parition size:         " + partitionSize);
-            Console.WriteLine("Workers:               " + workerCount);
 
             Console.WriteLine("Fetching deletable items...");
             results = Database.RunQuerySlave(
                 $"SELECT `upload`.`upload_id`, `upload`.`user_id`, `upload`.`filestore`, `upload`.`filesize`, `upload`.`pool_id`, `upload`.`path` FROM `upload_stats` FORCE INDEX (delete_lookup) INNER JOIN `upload` ON `upload`.`upload_id` = `upload_stats`.`upload_id` WHERE `upload_stats`.`last_access` < DATE_ADD(NOW(), INTERVAL -90 DAY) AND `filestore` in ({endpointsString})");
 
-            var options = new ParallelOptions { MaxDegreeOfParallelism = workerCount };
-
             StartConsoleLogging();
 
             var existingCounts = new Dictionary<string, int>();
 
-            Parallel.ForEach(results.Cast<IDataRecord>().Partition(partitionSize), options, records =>
+            parallelResults(results, records =>
             {
                 try
                 {
@@ -142,7 +199,7 @@ namespace puush_deletion
                         {
                             Task.WaitAll(
                                 toDeleteFromStores.GroupBy(i => i.Filestore)
-                                    .Select(e => endpoints[e.Key].Delete(e.Select(i => $"files/{i.Path}"))).ToArray()
+                                    .Select(e => endpoints[e.Key].Delete(e.Select(i => i.FullPath))).ToArray()
                             );
                         }
                         catch (Exception e)
@@ -172,21 +229,32 @@ namespace puush_deletion
                     Interlocked.Decrement(ref running);
                 }
             });
+
+            void StartConsoleLogging()
+            {
+                var logger = new Thread(() =>
+                {
+                    while (true)
+                    {
+                        Thread.Sleep(1000);
+                        Console.WriteLine($"active {running} chunks {chunks_processed:n0} delrows {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freed_bytes / 1024f / 1024 / 1024:n1}GB pro {skipped_pro:n0} skip {skipped_endpoint:n0}");
+                    }
+
+                    // ReSharper disable once FunctionNeverReturns
+                }) { IsBackground = true };
+                logger.Start();
+            }
         }
 
-        private static void StartConsoleLogging()
+        private static void parallelResults(MySqlDataReader results, Action<IEnumerable<IDataRecord>> action)
         {
-            var logger = new Thread(() =>
-            {
-                while (true)
-                {
-                    Thread.Sleep(1000);
-                    Console.WriteLine($"active {running} chunks {chunks_processed:n0} delrows {deletions:n0} errors {errors:n0} dupes {existing:n0} space {freed_bytes / 1024f / 1024 / 1024:n1}GB pro {skipped_pro:n0} skip {skipped_endpoint:n0}");
-                }
+            var partitionSize = int.Parse(config["partition_size"]);
+            var workerCount = int.Parse(config["worker_count"]);
 
-                // ReSharper disable once FunctionNeverReturns
-            }) { IsBackground = true };
-            logger.Start();
+            Console.WriteLine("Parition size:         " + partitionSize);
+            Console.WriteLine("Workers:               " + workerCount);
+
+            Parallel.ForEach(results.Cast<IDataRecord>().Partition(partitionSize), new ParallelOptions { MaxDegreeOfParallelism = workerCount }, action);
         }
 
         private static IEnumerable<List<T>> Partition<T>(this IEnumerable<T> items, int partitionSize)

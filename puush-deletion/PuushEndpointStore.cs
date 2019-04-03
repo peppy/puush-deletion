@@ -12,9 +12,11 @@ namespace puush_deletion
 {
     class PuushEndpointStore
     {
+        public readonly int Pool;
+
         private readonly AmazonS3Client client;
-        private readonly int pool;
         private readonly string bucket;
+        private readonly string endpoint;
         private readonly bool requiresDeletion;
 
         public PuushEndpointStore(int pool, string key, string secret, string bucket, string endpoint = null, bool requiresDeletion = true)
@@ -31,8 +33,10 @@ namespace puush_deletion
             else
                 client = new AmazonS3Client(new BasicAWSCredentials(key, secret), RegionEndpoint.USWest2);
 
-            this.pool = pool;
+            Pool = pool;
+
             this.bucket = bucket;
+            this.endpoint = endpoint;
             this.requiresDeletion = requiresDeletion;
 
             Console.Write($"Checking connection to endpoint {pool} ({endpoint ?? "s3"}/{bucket})..");
@@ -40,25 +44,50 @@ namespace puush_deletion
             Console.WriteLine("OK!");
         }
 
+        public override string ToString() => $"{Pool} ({endpoint})";
+
         private static readonly object file_lock = new object();
 
         public Task Delete(string key)
         {
             lock (file_lock)
-                File.AppendAllText($"deleted-{pool}.txt", $"single: {key}\n");
+                File.AppendAllText($"deleted-{Pool}.txt", $"single: {key}\n");
 
             if (!requiresDeletion) return Task.CompletedTask;
-            
+
             return client.DeleteObjectAsync(bucket, key);
+        }
+
+        public Task<GetObjectResponse> Get(string key)
+        {
+            lock (file_lock)
+                File.AppendAllText($"migrated-{Pool}.txt", $"{key}\n");
+            return client.GetObjectAsync(bucket, key);
+        }
+
+        public Task Put(string key, GetObjectResponse getData)
+        {
+            return client.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = bucket,
+                Key = key,
+                CannedACL = S3CannedACL.PublicRead,
+                Headers =
+                {
+                    ContentLength = getData.Headers.ContentLength,
+                    ContentType = getData.Headers.ContentType,
+                },
+                InputStream = getData.ResponseStream
+            });
         }
 
         public Task Delete(IEnumerable<string> keys)
         {
             lock (file_lock)
-                File.AppendAllText($"deleted-{pool}.txt", $"batch: {string.Join(" ", keys)}\n");
+                File.AppendAllText($"deleted-{Pool}.txt", $"batch: {string.Join(" ", keys)}\n");
 
             if (!requiresDeletion) return Task.CompletedTask;
-            
+
             switch (keys.Count())
             {
                 case 1:
