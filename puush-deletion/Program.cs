@@ -100,12 +100,20 @@ namespace puush_deletion
                 {
                     var upload = new PuushUpload(r.GetString(0));
 
-                    Console.WriteLine($"Migrating {upload.Path}...");
+                    try
+                    {
+                        Console.WriteLine($"Migrating {upload.Path}...");
 
-                    using (var stream = source.Get(upload.FullPath).Result)
-                        destination.Put(upload.FullPath, stream).Wait();
+                        using (var stream = source.Get(upload.FullPath).Result)
+                            destination.Put(upload.FullPath, stream).Wait();
 
-                    Database.RunNonQuery($"UPDATE upload SET filestore = {destinationId} WHERE filestore = {sourceId} AND path = '{upload.Path}'");
+                        Database.RunNonQuery($"UPDATE upload SET filestore = {destinationId} WHERE filestore = {sourceId} AND path = '{upload.Path}'");
+                    }
+                    catch (Exception)
+                    {
+                        Console.WriteLine($"Error when migrating {upload.Path}");
+                        throw;
+                    }
                 }
             });
         }
