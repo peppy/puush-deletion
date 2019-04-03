@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -109,10 +110,11 @@ namespace puush_deletion
 
                         Database.RunNonQuery($"UPDATE upload SET filestore = {destinationId} WHERE filestore = {sourceId} AND path = '{upload.Path}'");
                     }
-                    catch (Exception)
+                    catch (Exception e)
                     {
-                        Console.WriteLine($"Error when migrating {upload.Path}");
-                        throw;
+                        Console.WriteLine($"Error on {upload.Path}");
+                        lock (results)
+                            File.AppendAllText($"migrated-error-{sourceId}.txt", $"{upload.Path} - {e}\n");
                     }
                 }
             });
