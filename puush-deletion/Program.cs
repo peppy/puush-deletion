@@ -108,6 +108,7 @@ namespace puush_deletion
                         using (var stream = source.Get(upload.FullPath).Result)
                             destination.Put(upload.FullPath, stream).Wait();
 
+                        source.Delete(upload.FullPath).Wait();
                         Database.RunNonQuery($"UPDATE upload SET filestore = {destinationId} WHERE filestore = {sourceId} AND path = '{upload.Path}'");
                     }
                     catch (Exception e)
