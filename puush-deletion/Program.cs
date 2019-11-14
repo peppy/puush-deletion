@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
@@ -93,7 +93,7 @@ namespace puush_deletion
 
             Console.WriteLine("Fetching migratable items...");
 
-            var results = Database.RunQuerySlave($"SELECT DISTINCT(path) FROM `upload_stats` INNER JOIN `upload` ON `upload`.`upload_id` = `upload_stats`.`upload_id` WHERE `filestore` = {source.Pool}");
+            var results = Database.RunQuerySlave($"SELECT DISTINCT(path) FROM `upload` WHERE `filestore` = {source.Pool}");
 
             parallelResults(results, records =>
             {
