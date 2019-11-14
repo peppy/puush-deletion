@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using MySql.Data.MySqlClient;
+using StatsdClient;
 
 namespace puush_deletion
 {
@@ -28,6 +29,8 @@ namespace puush_deletion
 
         static void Main(string[] args)
         {
+            DogStatsd.Configure(new StatsdConfig { Prefix = "puush.deletion" });
+
             if (args.Length == 0)
             {
                 Console.WriteLine("First argument must be a valid mode [deletion / migration]");
@@ -222,7 +225,10 @@ namespace puush_deletion
                             return;
                         }
 
-                        Interlocked.Add(ref freed_bytes, toDeleteFromStores.Sum(i => i.Filesize));
+                        int newBytes = toDeleteFromStores.Sum(i => i.Filesize);
+
+                        Interlocked.Add(ref freed_bytes, newBytes);
+                        DogStatsd.Increment("freed_bytes", newBytes);
                     }
 
                     foreach (var item in chunk)

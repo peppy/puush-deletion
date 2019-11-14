@@ -7,6 +7,7 @@ using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using StatsdClient;
 
 namespace puush_deletion
 {
@@ -85,6 +86,8 @@ namespace puush_deletion
         {
             lock (file_lock)
                 File.AppendAllText($"deleted-{Pool}.txt", $"batch: {string.Join(" ", keys)}\n");
+            
+            DogStatsd.Increment("deleted", tags: new[] { $"pool:{Pool}" });
 
             if (!requiresDeletion) return Task.CompletedTask;
 
