@@ -84,14 +84,16 @@ namespace puush_deletion
 
         public Task Delete(IEnumerable<string> keys)
         {
+            int count = keys.Count();
+
             lock (file_lock)
                 File.AppendAllText($"deleted-{Pool}.txt", $"batch: {string.Join(" ", keys)}\n");
             
-            DogStatsd.Increment("deleted", tags: new[] { $"pool:{Pool}" });
+            DogStatsd.Increment("deleted", tags: new[] { $"pool:{Pool}" }, value: count);
 
             if (!requiresDeletion) return Task.CompletedTask;
 
-            switch (keys.Count())
+            switch (count)
             {
                 case 1:
                     return Delete(keys.First());
