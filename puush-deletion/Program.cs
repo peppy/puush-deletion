@@ -29,7 +29,11 @@ namespace puush_deletion
 
         static void Main(string[] args)
         {
-            DogStatsd.Configure(new StatsdConfig { Prefix = "puush.deletion" });
+            DogStatsd.Configure(new StatsdConfig
+            {
+                StatsdServerName = "127.0.0.1",
+                Prefix = "puush.deletion"
+            });
 
             if (args.Length == 0)
             {
